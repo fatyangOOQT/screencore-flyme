@@ -1,0 +1,52 @@
+name: Build Tweak
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.scheme }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scheme: rootless
+            flag: "THEOS_PACKAGE_SCHEME=rootless"
+          - scheme: rootful
+            flag: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pick Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer 2>/dev/null || true
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install Theos
+        run: |
+          brew install make xz ldid
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Build package
+        run: |
+          gmake clean package FINALPACKAGE=1 ${{ matrix.flag }}
+
+      - name: Show built deb
+        run: |
+          ls -la packages/
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScreenCoreFlymeClose-${{ matrix.scheme }}
+          path: packages/*.deb
+          if-no-files-found: error
