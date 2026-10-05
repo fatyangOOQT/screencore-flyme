@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: Build (${{ matrix.scheme }})
-    runs-on: macos-15
+    runs-on: macos-15-intel
     strategy:
       fail-fast: false
       matrix:
@@ -24,9 +24,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pick Xcode
+      - name: Show toolchain
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer 2>/dev/null || true
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
