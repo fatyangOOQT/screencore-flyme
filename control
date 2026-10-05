@@ -1,0 +1,9 @@
+Package: com.susudear.screencore.flymeclose
+Name: ScreenCore Flyme Close
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Description: 把 ScreenCore 分屏插件的小窗操作逻辑改为魅族 Flyme 式：点击小窗外空白处关闭小窗；小窗底部新增 homebar 横条，上滑挂起小窗成 dock，下拉小窗变全屏。不改动原插件二进制，可随时卸载回退。
+Maintainer: Doubao-Engineered
+Author: Doubao-Engineered
+Section: Tweaks
+Depends: mobilesubstrate, com.susudear.screencore
