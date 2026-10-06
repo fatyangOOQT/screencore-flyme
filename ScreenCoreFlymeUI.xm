@@ -36,11 +36,16 @@ extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef 
 #define kSCFlymeEnabled           1
 
 // --- homebar ---
-#define kSCHomeBarHitHeight       26.0    // 手势承载层高度(pt)，贴小窗底部
-#define kSCHomeBarWidthRatio      0.40    // 横条宽度 = 小窗宽 × 该比例
-#define kSCHomeBarMaxWidth        120.0
-#define kSCHomeBarHeight          4.5
-#define kSCHomeBarBottomInset     6.0     // 横条距承载层底部
+// 横条位置：贴在小窗的「底边外侧」，不压住 App 自己的内容。
+//   计算方式：hitLayer 是一块贴在容器底边的透明手势层，横条画在这块层里、
+//   尽量靠下（pill 中心对齐容器底边，一半在窗外侧）。
+//   真机如果觉得还是往里盖住了 App 内容，就把 kSCHomeBarHitHeight 调小、
+//   或把 kSCHomeBarBottomInset 调大（单位 pt）。
+#define kSCHomeBarHitHeight       14.0    // 手势承载层高度（贴底边，窄一点避免盖内容）
+#define kSCHomeBarWidthRatio      0.60    // 横条宽度 = 小窗宽 × 该比例（Flyme 观感更宽）
+#define kSCHomeBarMaxWidth        150.0
+#define kSCHomeBarHeight          4.0     // 横条粗细
+#define kSCHomeBarBottomInset     1.5     // 横条底部距承载层底部
 #define kSCHomeBarAlpha           0.85
 
 // --- 手势判定 ---
@@ -371,6 +376,7 @@ static const void *kSCHitKey = &kSCHitKey;   // 承载层
 static const void *kSCBarKey = &kSCBarKey;   // 视觉横条
 static const void *kSCPanKey = &kSCPanKey;   // 手势
 static const void *kSCPanOwnerKey = &kSCPanOwnerKey;   // 手势 → 容器(弱)
+static const void *kSCLoggedKey = &kSCLoggedKey;       // 只打印一次几何
 
 @interface SCFlymeHomeBarTarget : NSObject
 + (instancetype)shared;
@@ -457,20 +463,29 @@ static const void *kSCPanOwnerKey = &kSCPanOwnerKey;   // 手势 → 容器(弱)
         SCLog("homebar installed on %p bounds=%@", self, NSStringFromCGRect(b));
     }
 
-    // ---- 布局：承载层贴底，横条居中 ----
+    // ---- 布局：承载层贴容器底边，横条画在承载层里、尽量靠外（下）----
     hit.hidden = NO;
     CGFloat hitH = kSCHomeBarHitHeight;
-    if (b.size.height < hitH * 2.5) hitH = MAX(10.0, b.size.height * 0.28);
+    if (b.size.height < hitH * 2.5) hitH = MAX(8.0, b.size.height * 0.12);
 
+    // 承载层底部对齐容器底边：横条中心正好落在小窗下边线上（外侧视觉）
     hit.frame = CGRectMake(0, b.size.height - hitH, b.size.width, hitH);
 
     CGFloat barW = MIN(b.size.width * kSCHomeBarWidthRatio, kSCHomeBarMaxWidth);
-    if (barW < 24.0) barW = MIN(b.size.width, 24.0);
+    if (barW < 28.0) barW = MIN(b.size.width, 28.0);
     bar.frame = CGRectMake((b.size.width - barW) / 2.0,
                            MAX(0.0, hitH - kSCHomeBarHeight - kSCHomeBarBottomInset),
                            barW, kSCHomeBarHeight);
 
     [self bringSubviewToFront:hit];
+
+    if (!objc_getAssociatedObject(self, kSCLoggedKey)) {
+        objc_setAssociatedObject(self, kSCLoggedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        SCLog("homebar laid out: bounds=(%.0f,%.0f,%.0f,%.0f) hit=(%.0f,%.0f,%.0f,%.0f) bar=(%.0f,%.0f,%.0f,%.0f)",
+              b.origin.x, b.origin.y, b.size.width, b.size.height,
+              hit.frame.origin.x, hit.frame.origin.y, hit.frame.size.width, hit.frame.size.height,
+              bar.frame.origin.x, bar.frame.origin.y, bar.frame.size.width, bar.frame.size.height);
+    }
 }
 
 // homebar 区域必须命中容器（避免被内容视图吃掉）
