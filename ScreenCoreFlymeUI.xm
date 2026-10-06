@@ -38,6 +38,7 @@
 #import <time.h>
 #import <unistd.h>
 #import <sys/stat.h>
+#import <fcntl.h>
 
 // 显式声明，避免不同 SDK 下 CFPreferences 头未引入导致链接失败
 extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef applicationID);
@@ -116,16 +117,44 @@ static const char *SCFlymeSelfPath(void) {
     return path;
 }
 
-/// 日志文件路径：dylib 同目录下的 ScreenCoreFlymeUI.log
+/// 日志文件路径：按优先级挑第一个**可写**的，避免沙盒/roothide 下写不进去。
+///   1) dylib 同目录（只要目录可写，最直观）
+///   2) /var/mobile/Library/Logs/ScreenCoreFlymeUI.log   ← Filza 最容易找到
+///   3) /var/mobile/Media/ScreenCoreFlymeUI/ScreenCoreFlymeUI.log  ← 一定可写
+static BOOL SCFlymeProbeWritable(const char *p) {
+    int fd = open(p, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) return NO;
+    close(fd);
+    return YES;
+}
+
 static const char *SCFlymeLogPath(void) {
     static char logpath[PATH_MAX] = {0};
     if (logpath[0]) return logpath;
+
+    char cand[PATH_MAX];
+
+    // 1) dylib 旁边
     const char *self = SCFlymeSelfPath();
-    if (!self[0]) { strcpy(logpath, "/tmp/ScreenCoreFlymeUI.log"); return logpath; }
-    strncpy(logpath, self, sizeof(logpath) - 8);
-    char *dot = strrchr(logpath, '.');
-    if (dot) *dot = '\0';                      // 掐掉 .dylib
-    strncat(logpath, ".log", sizeof(logpath) - strlen(logpath) - 1);
+    if (self[0]) {
+        strncpy(cand, self, sizeof(cand) - 8);
+        char *dot = strrchr(cand, '.');
+        if (dot) *dot = '\0';
+        strncat(cand, ".log", sizeof(cand) - strlen(cand) - 1);
+        if (SCFlymeProbeWritable(cand)) { strncpy(logpath, cand, sizeof(logpath) - 1); return logpath; }
+    }
+
+    // 2) /var/mobile/Library/Logs
+    mkdir("/var/mobile/Library/Logs", 0755);
+    snprintf(cand, sizeof(cand), "/var/mobile/Library/Logs/ScreenCoreFlymeUI.log");
+    if (SCFlymeProbeWritable(cand)) { strncpy(logpath, cand, sizeof(logpath) - 1); return logpath; }
+
+    // 3) /var/mobile/Media（用户数据分区，最保险）
+    mkdir("/var/mobile/Media/ScreenCoreFlymeUI", 0755);
+    snprintf(cand, sizeof(cand), "/var/mobile/Media/ScreenCoreFlymeUI/ScreenCoreFlymeUI.log");
+    if (SCFlymeProbeWritable(cand)) { strncpy(logpath, cand, sizeof(logpath) - 1); return logpath; }
+
+    strcpy(logpath, "/tmp/ScreenCoreFlymeUI.log");
     return logpath;
 }
 
