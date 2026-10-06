@@ -1,0 +1,7 @@
+# Theos build output
+packages/
+.theos/
+obj/
+*.deb
+*.dylib
+*.plain.m
