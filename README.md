@@ -132,16 +132,20 @@ ScreenCoreFlymeClose/
 
 新 arm64e ABI 必须在 macOS + Xcode 上编译，Windows 本机无法编译。
 
-### 已经编好了
+### 已经编好了（三种越狱各一个）
 
-本插件已用 GitHub Actions 编译通过（Xcode 16.4 / Theos，arm64 + arm64e 双架构 fat dylib）：
+| 文件 | 用在哪种越狱 | 装到哪 |
+|---|---|---|
+| **`ScreenCoreFlymeUI_2.2.0_roothide.deb`** | **Relaxin / RootHide（roothide，随机 jbroot）** | `<jbroot>/Library/MobileSubstrate/DynamicLibraries/` |
+| `ScreenCoreFlymeUI_2.2.0_rootless.deb` | Dopamine / palera1n rootless / XinaA15 | `/var/jb/Library/…` |
+| `ScreenCoreFlymeUI_2.2.0_rootful.deb` | unc0ver / checkra1n rootful | `/Library/…` |
 
-| 文件 | 用在哪 |
-|---|---|
-| `ScreenCoreFlymeUI_2.1.0_rootless.deb` | **Dopamine / palera1n rootless / XinaA15**（装到 `/var/jb/Library/MobileSubstrate/DynamicLibraries/`） |
-| `ScreenCoreFlymeUI_2.1.0_rootful.deb` | unc0ver / checkra1n rootful（装到 `/Library/MobileSubstrate/DynamicLibraries/`） |
-
-对应 **ScreenCore ≥ 2.0.0**（`Depends` 里已写死，Sileo 会替你校验）。
+> **roothide 用户必须装 `_roothide` 那个。** roothide 的越狱根不是 `/var/jb` 而是随机
+> 路径，普通 rootless 包装进去不会被加载 —— 这正是一开始"完全没用"的原因。
+> 对照 RootHidePatcher 的 `patch.sh`：roothide 包要做两件事 ——
+> 把 `var/jb/*` 抬到包根目录、control 里 `Architecture: iphoneos-arm64e`。
+> 本仓库的 Makefile 用 `THEOS_PACKAGE_INSTALL_PREFIX=/` 直接编出这种结构
+> （`make package roothide=1`），CI 里的 `roothide` 那一格就是这么编的。
 
 编译仓库：<https://github.com/fatyangOOQT/screencore-flyme>
 
@@ -189,16 +193,26 @@ make package                                 # rootful
 
 ### 看日志（不需要电脑、不需要终端）
 
-1. Filza 打开：**`/var/mobile/Library/Logs/ScreenCoreFlymeUI.log`**
-2. 装好插件 → 注销 → **呼出一次小窗** → 再回 Filza 点开这个文件刷新。
+日志文件名跟 dylib 同目录（路径不写死，三种越狱都对）：
 
-能看到的内容形如：
+```
+roothide : <jbroot>/Library/MobileSubstrate/DynamicLibraries/ScreenCoreFlymeUI.log
+rootless : /var/jb/Library/MobileSubstrate/DynamicLibraries/ScreenCoreFlymeUI.log
+rootful  : /Library/MobileSubstrate/DynamicLibraries/ScreenCoreFlymeUI.log
+```
+
+1. Filza 进到 `DynamicLibraries/` 目录，找到 **`ScreenCoreFlymeUI.log`**；
+2. 装好插件 → 注销 → **呼出一次小窗** → 回 Filza 打开/刷新这个文件。
+
+日志开头会自己写明位置，形如：
 
 ```
 10-06 11:28:41 [1234] ==================================================
 10-06 11:28:41 [1234] ScreenCoreFlymeUI 2.2.0  build Oct  6 2026 11:20:03
-10-06 11:28:41 [1234] pid=1234  logfile=/var/mobile/Library/Logs/ScreenCoreFlymeUI.log
-10-06 11:28:41 [1234]   image: /var/jb/Library/MobileSubstrate/DynamicLibraries/ScreenCore.dylib
+10-06 11:28:41 [1234] pid=1234
+10-06 11:28:41 [1234] self  = /var/containers/.../Library/MobileSubstrate/DynamicLibraries/ScreenCoreFlymeUI.dylib
+10-06 11:28:41 [1234] log   = /var/containers/.../Library/MobileSubstrate/DynamicLibraries/ScreenCoreFlymeUI.log
+10-06 11:28:41 [1234]   image: .../DynamicLibraries/ScreenCore.dylib
 10-06 11:28:41 [1234] container class = SCFloatingContainerView
 10-06 11:28:41 [1234] OK：hook 已就绪。呼出小窗后应能看到 homebar 相关日志。
 10-06 11:28:52 [1234] homebar installed on 0x104aabbc0 bounds={{0, 0}, {363, 578}}
