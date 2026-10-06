@@ -183,25 +183,49 @@ make package                                 # rootful
 
 ## 六、真机调试（重要）
 
-插件日志用 `os_log`，tag 是 **`[FlymeUI]`**。装好后：
+> **这台设备的环境**：iPhone 15 Pro / iOS 17.3 / **Relaxin**（ElleKit 注入、rootless）。
+> `os_log` 在 iOS 14+ **不会写进 syslog**，`idevicesyslog | grep FlymeUI` 抓不到东西 ——
+> 所以本插件把日志同时写到 **stderr** 和 **文件**，主要看文件。
 
-```bash
-# 电脑上看实时日志（需 libimobiledevice / idevicesyslog）
-idevicesyslog | grep FlymeUI
+### 看日志（不需要电脑、不需要终端）
 
-# 或在越狱机上
-tail -f /var/log/syslog | grep FlymeUI      # 视越狱环境而定
+1. Filza 打开：**`/var/mobile/Library/Logs/ScreenCoreFlymeUI.log`**
+2. 装好插件 → 注销 → **呼出一次小窗** → 再回 Filza 点开这个文件刷新。
+
+能看到的内容形如：
+
+```
+10-06 11:28:41 [1234] ==================================================
+10-06 11:28:41 [1234] ScreenCoreFlymeUI 2.2.0  build Oct  6 2026 11:20:03
+10-06 11:28:41 [1234] pid=1234  logfile=/var/mobile/Library/Logs/ScreenCoreFlymeUI.log
+10-06 11:28:41 [1234]   image: /var/jb/Library/MobileSubstrate/DynamicLibraries/ScreenCore.dylib
+10-06 11:28:41 [1234] container class = SCFloatingContainerView
+10-06 11:28:41 [1234] OK：hook 已就绪。呼出小窗后应能看到 homebar 相关日志。
+10-06 11:28:52 [1234] homebar installed on 0x104aabbc0 bounds={{0, 0}, {363, 578}}
+10-06 11:28:52 [1234] homebar laid out: bounds=(0,0,363,578) hit=(0,564,363,14) bar=(72,572,218,4)
+10-06 11:28:52 [1234] shield installed below 0x104aabbc0 in SCFloatingHostRootView (parent bounds=...)
 ```
 
-日志会打印：小窗 bounds、dock corner 选择、每次手势的 zone/位移/速度、最终动作。
+### 三条判断路径
+
+| 日志现象 | 结论 | 下一步 |
+|---|---|---|
+| **文件里什么都没有 / 文件不存在** | 插件没加载 | Relaxin 下检查 ElleKit 是否正常、deb 是否装进 `/var/jb/…`；把 `dpkg -l \| grep flyme` 结果发我 |
+| 有 banner 但 `container class = (NOT FOUND)` | 小窗容器类名不是 `SCFloatingContainerView` | 把日志发我，我用扫描到的真实类名重写 hook |
+| banner + `container class = …` + `homebar laid out: …` 都有，但界面没变化 | 代码在跑，是几何或被别的东西盖住 | 把 `homebar laid out` 那行发我，我按真实数字改，或把横条改挂到父视图上 |
+
+### 也可以用电脑抓 syslog（次要手段）
+
+```bash
+idevicesyslog | grep FlymeUI     # 只在 stderr 那一路有效
+```
 
 ### 上手检查清单
 
-1. 呼出小窗 → 看小窗底部是否出现**白色小横条**（若没有：查日志里有没有
-   `homebar installed on ... bounds=...`，没有说明容器类名/时机不对）。
-2. 横条**上滑** → 小窗应缩成左上角小窗（若方向反了，改 `kSCCornerLeft/kSCCornerRight`）。
-3. 横条**下拉** → 应变成全屏。
-4. 点小窗**外面** → 应关闭小窗。
+1. 呼出小窗 → 看小窗底部是否出现**白色小横条**；
+2. 横条**上滑** → 小窗应缩成左上角小窗（若方向反了，改 `kSCCornerLeft/kSCCornerRight`）；
+3. 横条**下拉** → 应变成全屏；
+4. 点小窗**外面** → 应关闭小窗；
 5. 点小窗**四周蓝色** → 应仍能缩小小窗（原行为保留）。
 
 ### 想只要其中一部分
