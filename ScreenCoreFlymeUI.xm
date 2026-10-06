@@ -33,6 +33,11 @@
 #endif
 #import <stdlib.h>
 #import <string.h>
+#import <stdio.h>
+#import <stdarg.h>
+#import <time.h>
+#import <unistd.h>
+#import <sys/stat.h>
 
 // 显式声明，避免不同 SDK 下 CFPreferences 头未引入导致链接失败
 extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef applicationID);
@@ -67,10 +72,14 @@ extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef 
 #define kSCForceCorner            -1      // 1/2/3/4 可强制指定；-1 = 读插件设置
 
 // --- 日志 ---
+// 注意：iOS 14+ 的 os_log 不会写进 syslog，idevicesyslog 抓不到。
+// 所以这里把日志同时写到 stderr 和文件，用 Filza 就能看。
 #define kSCFlymeLog               1
+#define kSCLogPath                "/var/mobile/Library/Logs/ScreenCoreFlymeUI.log"
+#define kSCLogMaxBytes            (768 * 1024)
 
 #if kSCFlymeLog
-  #define SCLog(fmt, ...) os_log(OS_LOG_DEFAULT, "[FlymeUI] " fmt, ##__VA_ARGS__)
+  #define SCLog(fmt, ...) SCFlymeLogLine(fmt, ##__VA_ARGS__)
 #else
   #define SCLog(fmt, ...)
 #endif
@@ -89,6 +98,43 @@ extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef 
          didRequestDockFromCorner:(NSInteger)corner;
 - (void)sc_floatingContainerViewDidRequestFullscreen:(UIView *)container;
 @end
+
+// =============================================================================
+// 日志实现：stderr + 文件（/var/mobile/Library/Logs/ScreenCoreFlymeUI.log）
+// =============================================================================
+#if kSCFlymeLog
+static void SCFlymeLogLine(const char *fmt, ...) {
+    char msg[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+
+    // 1) stderr（越狱环境里会进 syslog，能用 idevicesyslog 抓）
+    fprintf(stderr, "[FlymeUI] %s\n", msg);
+
+    // 2) 文件（主要手段：Filza 直接看）
+    static FILE *fp = NULL;
+    if (!fp) {
+        mkdir("/var/mobile/Library/Logs", 0755);
+        struct stat st;
+        if (stat(kSCLogPath, &st) == 0 && st.st_size > kSCLogMaxBytes) {
+            unlink(kSCLogPath);   // 太大就重开，避免无限增长
+        }
+        fp = fopen(kSCLogPath, "a");
+        if (!fp) return;          // 写不了文件也不影响功能
+    }
+    time_t t = time(NULL);
+    struct tm tmv;
+    localtime_r(&t, &tmv);
+    char ts[32];
+    strftime(ts, sizeof(ts), "%m-%d %H:%M:%S", &tmv);
+    fprintf(fp, "%s [%d] %s\n", ts, getpid(), msg);
+    fflush(fp);                   // 立刻落盘，崩溃也不丢日志
+}
+#else
+static inline void SCFlymeLogLine(const char *fmt, ...) {}
+#endif
 
 // =============================================================================
 // 工具
@@ -596,13 +642,17 @@ static const void *kSCLoggedKey = &kSCLoggedKey;       // 只打印一次几何
 // =============================================================================
 %ctor {
     // 加载时把关键事实全打出来，便于定位「到底哪一步没生效」
-    SCLog("=== ScreenCoreFlymeUI loaded (build %s %s) ===", __DATE__, __TIME__);
-    SCLog("homebar 上滑=挂起 / 下拉=全屏；窗外点击=关闭");
+    SCLog("==================================================");
+    SCLog("ScreenCoreFlymeUI 2.2.0  build %s %s", __DATE__, __TIME__);
+    SCLog("pid=%d  logfile=%s", getpid(), kSCLogPath);
     SCFlymeDumpImages();
     Class c = SCFlymeContainerClass();
-    SCLog("container class = %{public}s", c ? class_getName(c) : "(NOT FOUND)");
+    SCLog("container class = %s", c ? class_getName(c) : "(NOT FOUND)");
     if (!c) {
-        SCLog("!! 插件没生效的根因可能在这里：找不到小窗容器类。");
-        SCLog("!! 请确认 ScreenCore 已安装并已注销；把上面 image: 那几行发我。");
+        SCLog("!! 找不到小窗容器类：插件可能没装好，或类名变了。");
+        SCLog("!! 请把上面的 image: 行和这行一起发给我。");
+    } else {
+        SCLog("OK：hook 已就绪。呼出小窗后应能看到 homebar 相关日志。");
     }
+    SCLog("==================================================");
 }
