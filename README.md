@@ -9,6 +9,12 @@
 
 ## 一、改成了什么（对照表）
 
+> **兼容性**：已核对 **ScreenCore 2.0.1 (arm64e)**——`SCFloatingContainerView`、
+> `SCFloatingHostWindow`、`isDocked` 以及三个 delegate 回调都没有改名，
+> 所以本插件直接适用于 2.0.x。要装的 deb 是 `2.1.0`（配合 ScreenCore ≥ 2.0.0）。
+> 2.0.1 相对旧版新增了 `SCArcAdjustmentView`、`SCFloatingWindowTransitionCoordinator`
+> 等类，但小窗容器与操作回调没动。
+
 | 操作 | 原版 ScreenCore | 本插件（Flyme 式） |
 |---|---|---|
 | 点小窗四周**蓝色**区域 | 缩小小窗 / 挂起 | **保持不变**（本插件不拦） |
@@ -69,9 +75,32 @@
 
 本插件按这些比例实现：
 
-* **homebar** 贴小窗底部，手势承载区高 26 pt，横条宽 = 窗宽 × 40%（≤120 pt）、高 4.5 pt
+* **homebar** 贴在小窗**底边外侧**（不压 App 内容），手势承载层高 14 pt 并贴容器底边，
+  横条画在承载层里靠下：宽 = 窗宽 × 60%（≤150 pt）、高 4 pt、圆角、半透明白
 * **外侧带** 厚度 = min(140 pt, max(窗宽,窗高) × 25%)，最小 24 pt
 * 轻点位移 < 12 pt 才算「点击」；拖过 22 pt 或速度 > 350 pt/s 才算「滑动」
+
+### 横条位置/大小怎么调
+
+都在 `ScreenCoreFlymeUI.xm` 顶部：
+
+| 宏 | 默认 | 作用 |
+|---|---|---|
+| `kSCHomeBarHitHeight` | 14.0 | 手势承载层高度。**调小** = 横条更靠外、更不压内容 |
+| `kSCHomeBarBottomInset` | 1.5 | 横条距承载层底部。**调大** = 横条往上挪 |
+| `kSCHomeBarWidthRatio` | 0.60 | 横条宽度 = 窗宽 × 该比例 |
+| `kSCHomeBarMaxWidth` | 150.0 | 横条最大宽度 |
+| `kSCHomeBarHeight` | 4.0 | 横条粗细 |
+
+装好后日志会打印一次实际几何，照着这个数字调最准：
+
+```
+[FlymeUI] homebar laid out: bounds=(x,y,w,h) hit=(x,y,w,h) bar=(x,y,w,h)
+```
+
+`bounds` 是小窗容器矩形，`bar` 是横条实际位置（相对小窗左上角）。
+若 `bar.y + bar.height` 明显小于 `bounds.height`，说明横条还压在窗内，把
+`kSCHomeBarHitHeight` 或 `kSCHomeBarBottomInset` 往下调即可。
 
 ---
 
@@ -109,10 +138,19 @@ ScreenCoreFlymeClose/
 
 | 文件 | 用在哪 |
 |---|---|
-| `ScreenCoreFlymeUI_2.0.0_rootless.deb` | **Dopamine / palera1n rootless / XinaA15**（装到 `/var/jb/Library/MobileSubstrate/DynamicLibraries/`） |
-| `ScreenCoreFlymeUI_2.0.0_rootful.deb` | unc0ver / checkra1n rootful（装到 `/Library/MobileSubstrate/DynamicLibraries/`） |
+| `ScreenCoreFlymeUI_2.1.0_rootless.deb` | **Dopamine / palera1n rootless / XinaA15**（装到 `/var/jb/Library/MobileSubstrate/DynamicLibraries/`） |
+| `ScreenCoreFlymeUI_2.1.0_rootful.deb` | unc0ver / checkra1n rootful（装到 `/Library/MobileSubstrate/DynamicLibraries/`） |
+
+对应 **ScreenCore ≥ 2.0.0**（`Depends` 里已写死，Sileo 会替你校验）。
 
 编译仓库：<https://github.com/fatyangOOQT/screencore-flyme>
+
+> **注意**：ScreenCore 自己有个「小窗底部上滑关闭」开关
+> （`splitBottomSwipeUpCloseEnabled`，在插件设置里）。如果它开着，
+> 贴着小窗底边往上滑可能被插件先判成「关闭」而不是「挂起」，
+> 和 homebar 上滑挂起打架。日志里每次挂起都会打印这个开关的当前值：
+> `→ SUSPEND (dock corner 1, splitBottomSwipeUpCloseEnabled=1)`，
+> 是 1 的话建议去插件设置里把它关掉。
 
 > **踩过的两个坑**（自己改 Makefile 时注意）：
 > 1. `TARGET` 不要写死 SDK 版本（如 `iphone:clang:16.5:15.0`），否则 Theos 会去
