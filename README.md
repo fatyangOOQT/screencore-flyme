@@ -103,24 +103,40 @@ ScreenCoreFlymeClose/
 
 新 arm64e ABI 必须在 macOS + Xcode 上编译，Windows 本机无法编译。
 
-### 方式 A：GitHub Actions 云端一键编译（推荐，免费）
+### 已经编好了
 
-1. 登录 <https://github.com> → **+** → **New repository** → 名字随意（如 `screencore-flyme`）→ **Public** → **Create**。
-2. 把本文件夹**全部内容**（含隐藏的 `.github` 目录）拖进仓库页面 → **Commit changes**。
-3. 打开仓库 **Actions** 标签 → **Build Tweak** 会自动跑（约 5–10 分钟）。
-4. 跑完点进这次运行 → 页面底部 **Artifacts** → 下载：
-   * `ScreenCoreFlymeUI-rootless` → Dopamine / palera1n rootless / XinaA15（`/var/jb`）用，**大部分人选这个**；
-   * `ScreenCoreFlymeUI-rootful` → unc0ver / checkra1n rootful 用。
-5. 解压得到 `.deb` → Filza / Sileo 安装 → 注销（respring）。
+本插件已用 GitHub Actions 编译通过（Xcode 16.4 / Theos，arm64 + arm64e 双架构 fat dylib）：
 
-> 改完 `ScreenCoreFlymeUI.xm` 再 Commit，Actions 会自动编出新 deb；也可手动 **Run workflow**。
+| 文件 | 用在哪 |
+|---|---|
+| `ScreenCoreFlymeUI_2.0.0_rootless.deb` | **Dopamine / palera1n rootless / XinaA15**（装到 `/var/jb/Library/MobileSubstrate/DynamicLibraries/`） |
+| `ScreenCoreFlymeUI_2.0.0_rootful.deb` | unc0ver / checkra1n rootful（装到 `/Library/MobileSubstrate/DynamicLibraries/`） |
+
+编译仓库：<https://github.com/fatyangOOQT/screencore-flyme>
+
+> **踩过的两个坑**（自己改 Makefile 时注意）：
+> 1. `TARGET` 不要写死 SDK 版本（如 `iphone:clang:16.5:15.0`），否则 Theos 会去
+>    `$THEOS/sdks` 找不存在的 `iPhoneOS16.5.sdk` 而报错。用 `iphone:clang:latest:15.0`。
+> 2. **不要给 `SCFloatingContainerView` 写 ObjC category** —— 这个类只在运行时存在，
+>    编译期会产生 `_OBJC_CLASS_$_SCFloatingContainerView` 未定义符号导致链接失败。
+>    本插件用手势 target 对象 + 关联对象持有小窗来绕开。
+> 3. `%orig` 只能当语句用（`%orig;`）或赋给变量（`BOOL x = %orig;`），
+>    不能直接写进 `if (%orig)`，否则 Logos 展开后不是合法表达式。
+
+### 方式 A：GitHub Actions 云端编译（推荐，免费）
+
+1. fork / 新建仓库，把本文件夹**全部内容**（含隐藏的 `.github` 目录）拖进去 → **Commit**。
+2. 打开仓库 **Actions** 标签 → **Build Tweak** 自动跑（约 2 分钟）。
+3. 跑完点进这次运行 → 页面底部 **Artifacts** → 下载：
+   * `ScreenCoreFlymeUI-rootless` → rootless 用；
+   * `ScreenCoreFlymeUI-rootful` → rootful 用。
+4. 解压得到 `.deb` → Filza / Sileo 安装 → 注销（respring）。
 
 ### 方式 B：本机 Theos（macOS / 越狱 iPhone）
 
 ```bash
 make package THEOS_PACKAGE_SCHEME=rootless   # rootless
 make package                                 # rootful
-# 产物：packages/com.susudear.screencore.flymeui_2.0.0_iphoneos-arm64e.deb
 ```
 
 老设备（A11 及以下，无 arm64e）：把 `Makefile` 里 `ARCHS := arm64e arm64` 改成 `ARCHS := arm64`。
