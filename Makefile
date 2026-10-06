@@ -9,7 +9,8 @@
 #  老设备（A11 及以下，无 arm64e）把 ARCHS 改成 arm64
 # =============================================================================
 
-TARGET := iphone:clang:16.5:15.0
+# 用 Xcode 自带的 SDK（不要写死版本号，否则 Theos 会去 $THEOS/sdks 找不存在的 SDK）
+TARGET := iphone:clang:latest:15.0
 ARCHS  := arm64e arm64
 INSTALL_TARGET_PROCESSES = SpringBoard
 
