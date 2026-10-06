@@ -355,21 +355,35 @@ static void SCFlymeSyncShield(UIView *container) {
 
 // =============================================================================
 // [A] homebar
+//  注意：不能给 SCFloatingContainerView 写 category —— 那个类只在运行时存在，
+//  编译期链接会产生 "_OBJC_CLASS_$_SCFloatingContainerView" 未定义符号。
+//  所以用手势的 target 对象 + objc 关联对象来记住是哪个小窗。
 // =============================================================================
 static const void *kSCHitKey = &kSCHitKey;   // 承载层
 static const void *kSCBarKey = &kSCBarKey;   // 视觉横条
 static const void *kSCPanKey = &kSCPanKey;   // 手势
+static const void *kSCPanOwnerKey = &kSCPanOwnerKey;   // 手势 → 容器(弱)
 
-@interface SCFloatingContainerView (SCFlymeHomeBar)
+@interface SCFlymeHomeBarTarget : NSObject
++ (instancetype)shared;
+- (void)handlePan:(UIPanGestureRecognizer *)g;
 @end
 
-@implementation SCFloatingContainerView (SCFlymeHomeBar)
+@implementation SCFlymeHomeBarTarget
 
-- (void)scFlymeHomeBarPan:(UIPanGestureRecognizer *)g {
-    if (SCFlymeIsDocked(self)) return;
++ (instancetype)shared {
+    static SCFlymeHomeBarTarget *shared = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ shared = [SCFlymeHomeBarTarget new]; });
+    return shared;
+}
 
-    CGPoint v = [g velocityInView:self];
-    CGPoint t = [g translationInView:self];
+- (void)handlePan:(UIPanGestureRecognizer *)g {
+    UIView *c = objc_getAssociatedObject(g, kSCPanOwnerKey);
+    if (!c || SCFlymeIsDocked(c)) return;
+
+    CGPoint v = [g velocityInView:c];
+    CGPoint t = [g translationInView:c];
 
     if (g.state == UIGestureRecognizerStateEnded ||
         g.state == UIGestureRecognizerStateCancelled) {
@@ -377,9 +391,9 @@ static const void *kSCPanKey = &kSCPanKey;   // 手势
         BOOL down = (v.y >=  kSCTossVelocity) || (v.y > 0 && t.y >=  kSCTossTranslation);
         SCLog("homebar end v=(%.0f,%.0f) t=(%.0f,%.0f) up=%d down=%d",
               v.x, v.y, t.x, t.y, up, down);
-        if (up)        SCFlymeSuspend(self);       // 上滑 → 缩小小窗挂起
-        else if (down) SCFlymeFullscreen(self);    // 下拉 → 变全屏
-        [g setTranslation:CGPointZero inView:self];
+        if (up)        SCFlymeSuspend(c);       // 上滑 → 缩小小窗挂起
+        else if (down) SCFlymeFullscreen(c);    // 下拉 → 变全屏
+        [g setTranslation:CGPointZero inView:c];
     }
 }
 
@@ -413,12 +427,13 @@ static const void *kSCPanKey = &kSCPanKey;   // 手势
         objc_setAssociatedObject(self, kSCHitKey, hit, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
         UIPanGestureRecognizer *pan =
-            [[UIPanGestureRecognizer alloc] initWithTarget:self
-                                                   action:@selector(scFlymeHomeBarPan:)];
+            [[UIPanGestureRecognizer alloc] initWithTarget:SCFlymeHomeBarTarget.shared
+                                                   action:@selector(handlePan:)];
         pan.maximumNumberOfTouches = 1;
         pan.cancelsTouchesInView = NO;
         [hit addGestureRecognizer:pan];
         objc_setAssociatedObject(self, kSCPanKey, pan, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(pan, kSCPanOwnerKey, self, OBJC_ASSOCIATION_ASSIGN);
 
         bar = [[UIView alloc] initWithFrame:CGRectZero];
         bar.backgroundColor = [UIColor colorWithWhite:1.0 alpha:kSCHomeBarAlpha];
