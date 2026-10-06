@@ -51,22 +51,23 @@ static NSArray<UIWindow *> *sc_all_windows(void) {
     return ws;
 }
 
-// ---------- 收集所有小窗容器（递归扫描所有窗口的子视图） ----------
+// ---------- 递归收集子视图中的小窗容器（用静态函数，避免 block retain cycle） ----------
+static void sc_collect_recursive(UIView *v, Class containerClass, NSMutableArray *out) {
+    for (UIView *sub in v.subviews) {
+        if (containerClass && [sub isKindOfClass:containerClass]) {
+            [out addObject:sub];
+        }
+        sc_collect_recursive(sub, containerClass, out);
+    }
+}
+
+// ---------- 收集所有小窗容器 ----------
 static NSArray<UIView *> *sc_all_containers(void) {
     sc_ensure_classes();
     NSMutableArray *result = [NSMutableArray array];
     for (UIWindow *win in sc_all_windows()) {
         if (!win) continue;
-        __block void (^scan)(UIView *);
-        scan = ^(UIView *v) {
-            for (UIView *sub in v.subviews) {
-                if (g_ContainerClass && [sub isKindOfClass:g_ContainerClass]) {
-                    [result addObject:sub];
-                }
-                scan(sub);
-            }
-        };
-        scan(win);
+        sc_collect_recursive(win, g_ContainerClass, result);
     }
     return result;
 }
