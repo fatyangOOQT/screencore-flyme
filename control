@@ -1,8 +1,8 @@
 Package: com.susudear.screencore.flymeui
 Name: ScreenCore Flyme UI
-Version: 2.1.0
+Version: 2.2.0
 Architecture: iphoneos-arm64e
-Description: 把 ScreenCore 小窗改成 Flyme 操作逻辑（适配 ScreenCore 2.0.x）：小窗底部新增 homebar 小横条（上滑=缩小小窗挂起，下拉=小窗变全屏）；小窗状态下点击小窗以外的空白处=关闭小窗；小窗四周蓝色区域的挂起行为保留。不改动 ScreenCore 二进制，卸载即完全恢复原逻辑。
+Description: 把 ScreenCore 小窗改成 Flyme 操作逻辑（适配 ScreenCore 2.0.x / iOS 17.3 / Relaxin）：小窗底部新增 homebar 小横条（上滑=缩小小窗挂起，下拉=小窗变全屏）；小窗状态下点击小窗以外的空白处=关闭小窗；小窗四周蓝色区域的挂起行为保留。不改动 ScreenCore 二进制，卸载即完全恢复原逻辑。日志写在 /var/mobile/Library/Logs/ScreenCoreFlymeUI.log。
 Depends: mobilesubstrate, com.susudear.screencore (>= 2.0.0)
 Maintainer: SuSu
 Author: SuSu
