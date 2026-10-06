@@ -190,10 +190,10 @@ static void sc_flyme_fullscreen(UIView *container) {
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    // ---- 布局：touch 层贴容器底部，横条居中 ----
+    // ---- 布局：touch 层贴容器底部(窄条，尽量不挡 App 内容)，横条居中 ----
     touchLayer.hidden = NO;
     CGRect b = self.bounds;
-    CGFloat hitH = 28;                                   // 手势承载区高度
+    CGFloat hitH = 18;                                   // 手势承载区高度
     touchLayer.frame = CGRectMake(0, b.size.height - hitH, b.size.width, hitH);
 
     UIView *bar = objc_getAssociatedObject(self, kFlymeBarKey);
@@ -201,9 +201,10 @@ static void sc_flyme_fullscreen(UIView *container) {
         CGFloat bw = MIN(b.size.width * 0.4, 120.0);
         CGFloat bH = 4.5;
         bar.frame = CGRectMake((b.size.width - bw) / 2.0,
-                               hitH - bH - 7.0,
+                               hitH - bH - 4.0,
                                bw, bH);
     }
+    [self bringSubviewToFront:touchLayer];               // 保证横条在最前、可手势
 }
 
 - (void)sc_flyme_handlePan:(UIPanGestureRecognizer *)g {
