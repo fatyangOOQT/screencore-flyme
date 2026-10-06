@@ -26,6 +26,13 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <math.h>
 #import <dispatch/dispatch.h>
+#if __has_include(<dyld.h>)
+  #import <dyld.h>
+#else
+  #import <mach-o/dyld.h>
+#endif
+#import <stdlib.h>
+#import <string.h>
 
 // 显式声明，避免不同 SDK 下 CFPreferences 头未引入导致链接失败
 extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef applicationID);
@@ -88,9 +95,56 @@ extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef 
 // =============================================================================
 static Class g_ContainerClass = Nil;
 
-static inline Class SCFlymeContainerClass(void) {
-    if (!g_ContainerClass) g_ContainerClass = NSClassFromString(@"SCFloatingContainerView");
+/// 兜底：如果 SCFloatingContainerView 这个名字取不到，就从已加载的镜像里
+/// 遍历所有类，用「有 isDocked + 有 sc_floatingContainerViewDidRequestClose:」来认它。
+static Class SCFlymeResolveContainerClass(void) {
+    if (g_ContainerClass) return g_ContainerClass;
+
+    Class named = NSClassFromString(@"SCFloatingContainerView");
+    if (named) {
+        g_ContainerClass = named;
+        return g_ContainerClass;
+    }
+
+    SCLog("SCFloatingContainerView not found by name — scanning loaded classes…");
+    unsigned int total = objc_getClassList(NULL, 0);
+    if (total == 0) return Nil;
+    Class *buf = (Class *)malloc(sizeof(Class) * total);
+    if (!buf) return Nil;
+    total = objc_getClassList(buf, (int)total);
+    for (unsigned int i = 0; i < total; i++) {
+        Class c = buf[i];
+        const char *n = class_getName(c);
+        if (!n) continue;
+        if (strncmp(n, "SC", 2) != 0) continue;
+        BOOL hasDocked = class_getInstanceMethod(c, @selector(isDocked)) != NULL;
+        BOOL hasClose = class_getInstanceMethod(
+            c, @selector(sc_floatingContainerViewDidRequestClose:)) != NULL;
+        BOOL hasDock = class_getInstanceMethod(
+            c, @selector(sc_floatingContainerView:didRequestDockFromCorner:)) != NULL;
+        BOOL hasFull = class_getInstanceMethod(
+            c, @selector(sc_floatingContainerViewDidRequestFullscreen:)) != NULL;
+        if (hasDocked && hasClose && hasDock && hasFull) {
+            SCLog("  -> resolved container class: %s", n);
+            g_ContainerClass = c;
+            break;
+        }
+    }
+    free(buf);
     return g_ContainerClass;
+}
+
+static inline Class SCFlymeContainerClass(void) {
+    return SCFlymeResolveContainerClass();
+}
+
+/// 把 ScreenCore 注入的镜像路径全打出来，确认插件到底加载了没
+static void SCFlymeDumpImages(void) {
+    uint32_t n = _dyld_image_count();
+    for (uint32_t i = 0; i < n; i++) {
+        const char *p = _dyld_get_image_name(i);
+        if (p && strstr(p, "ScreenCore")) SCLog("  image: %s", p);
+    }
 }
 
 static NSArray<UIWindow *> *SCFlymeWindows(void) {
@@ -359,7 +413,8 @@ static void SCFlymeSyncShield(UIView *container) {
         shield.userInteractionEnabled = YES;
         objc_setAssociatedObject(container, kSCShieldKey, shield, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(shield, kSCShieldOwnerKey, container, OBJC_ASSOCIATION_ASSIGN);
-        SCLog("shield installed below %p in %{public}s", container, object_getClassName(parent));
+        SCLog("shield installed below %p in %{public}s (parent bounds=%@)",
+          container, object_getClassName(parent), NSStringFromCGRect(parent.bounds));
     }
     shield.frame = parent.bounds;
     [parent insertSubview:shield belowSubview:container];   // 保证叠放顺序
@@ -540,7 +595,14 @@ static const void *kSCLoggedKey = &kSCLoggedKey;       // 只打印一次几何
 
 // =============================================================================
 %ctor {
-    // 只在加载时打印一次版本信息，便于确认 hook 是否生效
-    SCLog("ScreenCoreFlymeUI loaded — homebar: 上滑挂起 / 下拉全屏；窗外点击: 关闭");
-    SCLog("container class found: %d", SCFlymeContainerClass() != Nil);
+    // 加载时把关键事实全打出来，便于定位「到底哪一步没生效」
+    SCLog("=== ScreenCoreFlymeUI loaded (build %s %s) ===", __DATE__, __TIME__);
+    SCLog("homebar 上滑=挂起 / 下拉=全屏；窗外点击=关闭");
+    SCFlymeDumpImages();
+    Class c = SCFlymeContainerClass();
+    SCLog("container class = %{public}s", c ? class_getName(c) : "(NOT FOUND)");
+    if (!c) {
+        SCLog("!! 插件没生效的根因可能在这里：找不到小窗容器类。");
+        SCLog("!! 请确认 ScreenCore 已安装并已注销；把上面 image: 那几行发我。");
+    }
 }
