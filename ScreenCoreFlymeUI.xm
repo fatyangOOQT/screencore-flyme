@@ -73,9 +73,9 @@ extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef 
 
 // --- 日志 ---
 // 注意：iOS 14+ 的 os_log 不会写进 syslog，idevicesyslog 抓不到。
-// 所以这里把日志同时写到 stderr 和文件，用 Filza 就能看。
+// 日志路径**不写死**：用本 dylib 自己的路径推导（dylib 旁边的 .log），
+// 这样 rootful / rootless(/var/jb) / roothide(随机 jbroot) 都能用。
 #define kSCFlymeLog               1
-#define kSCLogPath                "/var/mobile/Library/Logs/ScreenCoreFlymeUI.log"
 #define kSCLogMaxBytes            (768 * 1024)
 
 #if kSCFlymeLog
@@ -100,9 +100,35 @@ extern CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef 
 @end
 
 // =============================================================================
-// 日志实现：stderr + 文件（/var/mobile/Library/Logs/ScreenCoreFlymeUI.log）
+// 日志实现：stderr + 「dylib 旁边」的 .log 文件（与越狱类型无关）
 // =============================================================================
 #if kSCFlymeLog
+#import <dlfcn.h>
+
+/// 本 dylib 的绝对路径，例如 /var/jb/Library/MobileSubstrate/DynamicLibraries/ScreenCoreFlymeUI.dylib
+static const char *SCFlymeSelfPath(void) {
+    static char path[PATH_MAX] = {0};
+    if (path[0]) return path;
+    Dl_info info;
+    if (dladdr((const void *)&SCFlymeSelfPath, &info) && info.dli_fname) {
+        strncpy(path, info.dli_fname, sizeof(path) - 1);
+    }
+    return path;
+}
+
+/// 日志文件路径：dylib 同目录下的 ScreenCoreFlymeUI.log
+static const char *SCFlymeLogPath(void) {
+    static char logpath[PATH_MAX] = {0};
+    if (logpath[0]) return logpath;
+    const char *self = SCFlymeSelfPath();
+    if (!self[0]) { strcpy(logpath, "/tmp/ScreenCoreFlymeUI.log"); return logpath; }
+    strncpy(logpath, self, sizeof(logpath) - 8);
+    char *dot = strrchr(logpath, '.');
+    if (dot) *dot = '\0';                      // 掐掉 .dylib
+    strncat(logpath, ".log", sizeof(logpath) - strlen(logpath) - 1);
+    return logpath;
+}
+
 static void SCFlymeLogLine(const char *fmt, ...) {
     char msg[1024];
     va_list ap;
@@ -113,16 +139,18 @@ static void SCFlymeLogLine(const char *fmt, ...) {
     // 1) stderr（越狱环境里会进 syslog，能用 idevicesyslog 抓）
     fprintf(stderr, "[FlymeUI] %s\n", msg);
 
-    // 2) 文件（主要手段：Filza 直接看）
+    // 2) 文件（主要手段：Filza 打开 dylib 旁边那个 .log）
     static FILE *fp = NULL;
     if (!fp) {
-        mkdir("/var/mobile/Library/Logs", 0755);
         struct stat st;
-        if (stat(kSCLogPath, &st) == 0 && st.st_size > kSCLogMaxBytes) {
-            unlink(kSCLogPath);   // 太大就重开，避免无限增长
+        const char *lp = SCFlymeLogPath();
+        if (stat(lp, &st) == 0 && st.st_size > kSCLogMaxBytes) unlink(lp);
+        fp = fopen(lp, "a");
+        if (!fp) {
+            // 同目录不可写就退到 /tmp
+            fp = fopen("/tmp/ScreenCoreFlymeUI.log", "a");
+            if (!fp) return;
         }
-        fp = fopen(kSCLogPath, "a");
-        if (!fp) return;          // 写不了文件也不影响功能
     }
     time_t t = time(NULL);
     struct tm tmv;
@@ -134,6 +162,7 @@ static void SCFlymeLogLine(const char *fmt, ...) {
 }
 #else
 static inline void SCFlymeLogLine(const char *fmt, ...) {}
+static inline const char *SCFlymeLogPath(void) { return ""; }
 #endif
 
 // =============================================================================
@@ -644,7 +673,9 @@ static const void *kSCLoggedKey = &kSCLoggedKey;       // 只打印一次几何
     // 加载时把关键事实全打出来，便于定位「到底哪一步没生效」
     SCLog("==================================================");
     SCLog("ScreenCoreFlymeUI 2.2.0  build %s %s", __DATE__, __TIME__);
-    SCLog("pid=%d  logfile=%s", getpid(), kSCLogPath);
+    SCLog("pid=%d", getpid());
+    SCLog("self  = %s", SCFlymeSelfPath());
+    SCLog("log   = %s", SCFlymeLogPath());
     SCFlymeDumpImages();
     Class c = SCFlymeContainerClass();
     SCLog("container class = %s", c ? class_getName(c) : "(NOT FOUND)");
