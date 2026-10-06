@@ -245,7 +245,6 @@ static SCFloatingContainerView *SCFlymeContainerContaining(CGPoint p) {
     if (SCFlymeContainerContaining(point)) return NO;   // 窗内 → 交给小窗
     return YES;                                          // 窗外 → 拦截
 }
-
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     UITouch *touch = touches.anyObject;
     NSArray *floating = SCFlymeFloating();
@@ -453,7 +452,8 @@ static const void *kSCPanKey = &kSCPanKey;   // 手势
 
 // homebar 区域必须命中容器（避免被内容视图吃掉）
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-    if (%orig) return YES;
+    BOOL inside = %orig;
+    if (inside) return YES;
     UIView *hit = objc_getAssociatedObject(self, kSCHitKey);
     if (hit && !hit.hidden && CGRectContainsPoint(hit.frame, point)) return YES;
     return NO;
