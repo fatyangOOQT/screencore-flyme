@@ -1,6 +1,8 @@
 // =============================================================================
 //  ScreenCoreFlymeUI.xm — 把 ScreenCore 小窗改成魅族 Flyme 操作逻辑
 // =============================================================================
+//  适配 ScreenCore 2.0.x（已核对 2.0.1 arm64e：SCFloatingContainerView /
+//  SCFloatingHostWindow / isDocked 与三个 delegate 回调均未改名）。
 //  需求：
 //    ① 小窗四周「蓝色」区域点击 → 缩小小窗 / 挂起（原行为，本 tweak 保留不拦）
 //    ② 小窗底部新增 homebar 小横条：
@@ -159,7 +161,13 @@ static NSInteger SCFlymeDockCorner(void) {
 static void SCFlymeSuspend(UIView *c) {
     id del = [(id)c delegate];
     NSInteger corner = SCFlymeDockCorner();
-    SCLog("→ SUSPEND (dock corner %ld)", (long)corner);
+    // ScreenCore 自己也有「小窗底部上滑关闭」(splitBottomSwipeUpCloseEnabled)：
+    // 若开着，贴着小窗底边往上滑可能被它先判成关闭，和 homebar 上滑挂起打架。
+    // 这里只做提示，不在运行时强改用户设置。
+    NSNumber *swipeUpClose = (NSNumber *)CFBridgingRelease(CFPreferencesCopyAppValue(
+        CFSTR("splitBottomSwipeUpCloseEnabled"), CFSTR("com.susudear.screencoreprefs")));
+    SCLog("→ SUSPEND (dock corner %ld, splitBottomSwipeUpCloseEnabled=%d)",
+          (long)corner, swipeUpClose ? swipeUpClose.boolValue : -1);
     if ([del respondsToSelector:@selector(sc_floatingContainerView:didRequestDockFromCorner:)]) {
         [del sc_floatingContainerView:c didRequestDockFromCorner:corner];
     }
@@ -517,5 +525,7 @@ static const void *kSCPanOwnerKey = &kSCPanOwnerKey;   // 手势 → 容器(弱)
 
 // =============================================================================
 %ctor {
+    // 只在加载时打印一次版本信息，便于确认 hook 是否生效
     SCLog("ScreenCoreFlymeUI loaded — homebar: 上滑挂起 / 下拉全屏；窗外点击: 关闭");
+    SCLog("container class found: %d", SCFlymeContainerClass() != Nil);
 }
