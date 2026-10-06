@@ -1,23 +1,27 @@
-# ============================================================
-#  ScreenCoreFlymeClose — Makefile (Theos)
-#  在已安装 Theos 的机器(通常是你自己的 iPhone / Mac)上:
-#      make package      -> 生成 deb
-#      make install      -> 安装并重启 SpringBoard
-# ============================================================
-# 目标进程: SpringBoard（与 ScreenCore 主插件同一进程）
-TARGET := iphone:clang:latest:15.0
-INSTALL_TARGET_PROCESSES = SpringBoard
+# =============================================================================
+#  ScreenCoreFlymeUI — ScreenCore 小窗 Flyme 操作逻辑
+# =============================================================================
+#  rootless（Dopamine / palera1n rootless / XinaA15）：
+#      make package THEOS_PACKAGE_SCHEME=rootless
+#  rootful （unc0ver / checkra1n rootful）：
+#      make package
+#
+#  老设备（A11 及以下，无 arm64e）把 ARCHS 改成 arm64
+# =============================================================================
 
-# 现代越狱(A12+ / iOS14+ rootless) 用 arm64e；老设备(A11及以下)改为 "arm64"
-ARCHS = arm64e
+TARGET := iphone:clang:16.5:15.0
+ARCHS  := arm64e arm64
+INSTALL_TARGET_PROCESSES = SpringBoard
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = ScreenCoreFlymeClose
+TWEAK_NAME = ScreenCoreFlymeUI
 
-ScreenCoreFlymeClose_FILES = ScreenCoreFlymeClose.xm
-ScreenCoreFlymeClose_CFLAGS = -fobjc-arc
-# 编译期不依赖 ScreenCore 的头文件(全部按运行时类名解析)
-ScreenCoreFlymeClose_LIBRARIES =
+ScreenCoreFlymeUI_FILES = ScreenCoreFlymeUI.xm
+ScreenCoreFlymeUI_CFLAGS = -fobjc-arc -Wno-unused-function -Wno-deprecated-declarations
+ScreenCoreFlymeUI_FRAMEWORKS = UIKit CoreFoundation
 
-include $(THEOS)/makefiles/tweak.mk
+include $(THEOS_MAKE_PATH)/tweak.mk
+
+after-install::
+	install.exec "killall -9 SpringBoard || true"
